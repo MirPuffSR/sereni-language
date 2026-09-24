@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>セレニ語 文字合成ジェネレーター</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 100%;
+            margin: 0;
+            padding: 10px;
+            background-color: #f4f4f5;
+            color: #333;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.2rem;
+            text-align: center;
+            margin: 10px 0 15px 0;
+        }
+        fieldset {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 12px;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        legend {
+            font-weight: bold;
+            font-size: 0.85rem;
+            padding: 0 5px;
+            color: #555;
+        }
+        
+        .mapping-container-col {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .group-box {
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            padding: 8px;
+            background: #fafafa;
+        }
+        .group-title {
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 3px;
+            color: #444;
+        }
+        .tokens-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
+            gap: 4px;
+        }
+        .token-cell {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            text-align: center;
+            padding: 3px 1px;
+            font-size: 0.65rem;
+        }
+        .token-cell canvas {
+            display: block;
+            margin: 2px auto 0 auto;
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+
+        textarea {
+            width: 100%;
+            height: 90px;
+            font-size: 1rem;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        .btn-container {
+            text-align: right;
+            margin-top: 8px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:active {
+            background-color: #0056b3;
+        }
+
+        #preview-container {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px 10px;
+            text-align: center;
+            min-height: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: auto;
+        }
+        #placeholder-text {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        #resultCanvas {
+            max-width: 100%;
+            height: auto;
+            background: white;
+            border: 1px solid #ccc;
+            display: none;
+        }
+        #downloadBtn button {
+            background-color: #28a75e;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>セレニ語</h1>
+
+    <fieldset>
+        <legend>転写対応</legend>
+        <div id="mapping-container" class="mapping-container-col"></div>
+    </fieldset>
+
+    <fieldset>
+        <legend>テキスト入力</legend>
+        <textarea id="textInput" placeholder="文字を入力してください（半角アルファベット）"></textarea>
+        <div class="btn-container">
+            <button onclick="generateImage()">決定 (合成)</button>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>プレビュー</legend>
+        <div id="preview-container">
+            <span id="placeholder-text">ここにプレビューが表示されます</span>
+            <canvas id="resultCanvas"></canvas>
+        </div>
+        <a id="downloadBtn" style="display:none;" download="sereni-exported.png">
+            <button>保存(PNG)</button>
+        </a>
+    </fieldset>
+
+    <script>
+        const TEXT_MAPPING = {
+            "m": ["3CT", "3DL", "3DR", "3UL", "3UR"],
+            "n": ["3DL", "3DR", "3UL", "3UR"],
+            "p": ["3UL"],
+            "b": ["3CT", "3UL"],
+            "t": ["3UR"],
+            "d": ["3CT", "3UR"],
+            "s": ["3DL"],
+            "z": ["3CT", "3DL"],
+            "c": ["3DL", "3UL"],
+            "j": ["3CT", "3DL", "3UL"],
+            "f": ["3DR"],
+            "v": ["3CT", "3DR"],
+            "q": ["3DR", "3UR"],
+            "x": ["3CT", "3DR", "3UR"],
+            "t;": ["3UR", "3DL"],
+            "d;": ["3CT", "3UR", "3DL"],
+            "c;": ["3UR", "3DL", "3UL"],
+            "j;": ["3CT", "3UR", "3DL", "3UL"],
+            "p>": ["3CT"],
+            "t>": ["3DR", "3UR", "3DL"],
+            "d>": ["3CT", "3DR", "3UR", "3DL"],
+            "r": [],
+            "t<": ["3UL", "3DR", "3UR"],
+            "d<": ["3CT", "3UL", "3DR", "3UR"],
+            "s<": ["3DL", "3DR", "3UL"],
+            "z<": ["3CT", "3DL", "3DR", "3UL"],
+            "t;<": ["3UL", "3DR"],
+            "d;<": ["3CT", "3UL", "3DR"],
+            "k": ["3UL", "3UR"],
+            "g": ["3UL", "3UR"],
+            "y": ["3DL", "3DR"],
+            "h": ["3CT", "3DL", "3DR"],
+            "a": ["3vowel"],
+            "i": ["3vowel", "3UL"],
+            "u": ["3vowel", "3DR"],
+            "e": ["3vowel", "3DL"],
+            "o": ["3vowel", "3UR"],
+            "w": ["3vowel", "3CT"]
+        };
+
+        const SYMBOL_MAPPING = {
+            ",": "co", ".": "pe", "!": "ex", "?": "qu",
+            "{": "say_s", "}": "say_e", "(": "mean_s", ")": "mean_e"
+        };
+
+        const MAPPING_ROWS = [
+            [["子音：普通型", ["m", "n", "p", "b", "t", "d", "s", "z", "c", "j", "f", "v", "q", "x"]]],
+            [
+                ["子音：圧力型", ["t;", "d;", "c;", "j;", "p>", "t>", "d>"]],
+                ["子音：反舌型", ["r", "t<", "d<", "s<", "z<"]]
+            ],
+            [
+                ["子音：圧力反舌型", ["t;<", "d;<"]],
+                ["子音：特外型＆有気音", ["k", "g", "y", "h"]]
+            ],
+            [
+                ["母音", ["a", "i", "u", "e", "o", "w"]],
+                ["記号", [",", ".", "!", "?", "{", "}", "(", ")"]]
+            ]
+        ];
+
+        const LAYER_ORDER = ["1base", "2literal", "3CT", "3DL", "3DR", "3UL", "3UR", "3vowel"];
+
+        function loadImage(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => resolve(null);
+                img.src = src;
+            });
+        }
+
+        // 高速化：全マッピングの作成を並列処理する
+        async function renderMappingTable() {
+            const container = document.getElementById("mapping-container");
+            
+            for (let rowGroups of MAPPING_ROWS) {
+                for (let [groupName, tokens] of rowGroups) {
+                    let groupDiv = document.createElement("div");
+                    groupDiv.className = "group-box";
+                    
+                    let titleDiv = document.createElement("div");
+                    titleDiv.className = "group-title";
+                    titleDiv.innerText = groupName;
+                    groupDiv.appendChild(titleDiv);
+
+                    let gridDiv = document.createElement("div");
+                    gridDiv.className = "tokens-grid";
+
+                    // 各トークンの描画タスクを配列にして並列実行
+                    let cellPromises = tokens.map(async (token) => {
+                        let cell = document.createElement("div");
+                        cell.className = "token-cell";
+                        
+                        let label = document.createElement("div");
+                        label.style.fontWeight = "bold";
+                        label.innerText = token;
+                        cell.appendChild(label);
+
+                        let glyphCanvas = await createGlyphCanvas(token);
+                        if (glyphCanvas) {
+                            cell.appendChild(glyphCanvas);
+                        } else {
+                            let noneText = document.createElement("div");
+                            noneText.style.fontSize = "0.55rem";
+                            noneText.innerText = "(無)";
+                            cell.appendChild(noneText);
+                        }
+                        return cell;
+                    });
+
+                    let cells = await Promise.all(cellPromises);
+                    cells.forEach(cell => gridDiv.appendChild(cell));
+
+                    groupDiv.appendChild(gridDiv);
+                    container.appendChild(groupDiv);
+                }
+            }
+        }
+
+        function parseLine(line) {
+            let tokens = [];
+            let i = 0;
+            let allKeys = Object.keys(TEXT_MAPPING).concat(Object.keys(SYMBOL_MAPPING)).concat([" "]);
+            allKeys.sort((a, b) => b.length - a.length);
+
+            while (i < line.length) {
+                let matched = false;
+                for (let key of allKeys) {
+                    if (line.startsWith(key, i)) {
+                        tokens.push(key);
+                        i += key.length;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) i++;
+            }
+            return tokens;
+        }
+
+        async function createGlyphCanvas(token) {
+            let partsToDraw = [];
+
+            if (SYMBOL_MAPPING[token]) {
+                let path = `symbol/${SYMBOL_MAPPING[token]}.png`;
+                let img = await loadImage(path);
+                if (img) partsToDraw.push(img);
+            } else if (TEXT_MAPPING[token]) {
+                let parts = new Set(TEXT_MAPPING[token]);
+                parts.add("1base");
+                parts.add("2literal");
+
+                let ordered = LAYER_ORDER.filter(p => parts.has(p));
+                // レイヤー画像も並列で一括ロードして高速化
+                let imgPromises = ordered.map(part => loadImage(`text/${part}.png`));
+                let loadedImgs = await Promise.all(imgPromises);
+                partsToDraw = loadedImgs.filter(img => img !== null);
+            }
+
+            if (partsToDraw.length === 0) return null;
+
+            let width = partsToDraw[0].naturalWidth || 100;
+            let height = partsToDraw[0].naturalHeight || 100;
+
+            let canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            let ctx = canvas.getContext("2d");
+
+            for (let img of partsToDraw) {
+                ctx.drawImage(img, 0, 0, width, height);
+            }
+            return canvas;
+        }
+
+        async function generateImage() {
+            let content = document.getElementById("textInput").value.trim();
+            if (!content) {
+                alert("テキストを入力してください。");
+                return;
+            }
+
+            let lines = content.split("\n");
+            let lineCanvases = [];
+            let sampleWidth = 100, sampleHeight = 100;
+
+            for (let line of lines) {
+                let tokens = parseLine(line);
+                let glyphCanvases = [];
+
+                for (let token of tokens) {
+                    if (token === " ") {
+                        if (glyphCanvases.length > 0) {
+                            let w = glyphCanvases[0].width;
+                            let h = glyphCanvases[0].height;
+                            let blankCanvas = document.createElement("canvas");
+                            blankCanvas.width = Math.floor(w / 3);
+                            blankCanvas.height = h;
+                            glyphCanvases.push(blankCanvas);
+                        }
+                    } else {
+                        let glyphCanvas = await createGlyphCanvas(token);
+                        if (glyphCanvas) {
+                            sampleWidth = glyphCanvas.width;
+                            sampleHeight = glyphCanvas.height;
+                            glyphCanvases.push(glyphCanvas);
+                        }
+                    }
+                }
+
+                let rowWidth = glyphCanvases.reduce((sum, c) => sum + c.width, 0);
+                let rowHeight = glyphCanvases.reduce((max, c) => Math.max(max, c.height), sampleHeight);
+                
+                let rowCanvas = document.createElement("canvas");
+                rowCanvas.width = rowWidth > 0 ? rowWidth : sampleWidth;
+                rowCanvas.height = rowHeight;
+                let rowCtx = rowCanvas.getContext("2d");
+                
+                rowCtx.fillStyle = "white";
+                rowCtx.fillRect(0, 0, rowCanvas.width, rowCanvas.height);
+
+                let xOffset = 0;
+                for (let c of glyphCanvases) {
+                    rowCtx.drawImage(c, xOffset, 0);
+                    xOffset += c.width;
+                }
+                lineCanvases.push(rowCanvas);
+            }
+
+            let totalWidth = Math.max(...lineCanvases.map(c => c.width));
+            let totalHeight = lineCanvases.reduce((sum, c) => sum + c.height, 0);
+
+            let finalCanvas = document.getElementById("resultCanvas");
+            finalCanvas.width = totalWidth;
+            finalCanvas.height = totalHeight;
+            let ctx = finalCanvas.getContext("2d");
+
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+            let yOffset = 0;
+            for (let c of lineCanvases) {
+                ctx.drawImage(c, 0, yOffset);
+                yOffset += c.height;
+            }
+
+            document.getElementById("placeholder-text").style.display = "none";
+            finalCanvas.style.display = "block";
+
+            let dataURL = finalCanvas.toDataURL("image/png");
+            let downloadBtn = document.getElementById("downloadBtn");
+            downloadBtn.href = dataURL;
+            downloadBtn.style.display = "inline-block";
+        }
+
+        window.onload = renderMappingTable;
+    </script>
+</body>
+</html>
